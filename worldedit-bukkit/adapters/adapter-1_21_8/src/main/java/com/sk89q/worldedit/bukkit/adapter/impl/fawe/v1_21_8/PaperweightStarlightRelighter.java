@@ -1,4 +1,4 @@
-package com.sk89q.worldedit.bukkit.adapter.impl.fawe.v1_21_6;
+package com.sk89q.worldedit.bukkit.adapter.impl.fawe.v1_21_8;
 
 import com.fastasyncworldedit.bukkit.adapter.StarlightRelighter;
 import com.fastasyncworldedit.core.configuration.Settings;
@@ -16,6 +16,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 public class PaperweightStarlightRelighter extends StarlightRelighter<ServerLevel, ChunkPos> {
 
@@ -60,24 +63,53 @@ public class PaperweightStarlightRelighter extends StarlightRelighter<ServerLeve
             serverLevel.getChunkSource().getLightEngine().starlight$serverRelightChunks(coords, chunkCallback, processCallback);
         } catch (Exception e) {
             LOGGER.error("Error occurred on relighting", e);
-        }
+        }   
     }
 
     /*
      * Allow the server to unload the chunks again.
      * Also, if chunk packets are sent delayed, we need to do that here
      */
-    @Override
+    private static final Logger LOGGER = LogManager.getLogger(PaperweightStarlightRelighter.class);
+
     protected void postProcessChunks(Set<ChunkPos> coords) {
+        postProcessChunksConcrete(coords);
+    }
+
+    private void postProcessChunksConcrete(Set<ChunkPos> coords) {
         boolean delay = Settings.settings().LIGHTING.DELAY_PACKET_SENDING;
+        if (!delay) {
+            // If delay is false, just remove the tickets and return
+            for (ChunkPos pos : coords) {
+                serverLevel.getChunkSource().removeTicketAtLevel(FAWE_TICKET, pos, LIGHT_LEVEL);
+            }
+            return;
+        }
+
+        // Get the world and plugin instances
+        org.bukkit.World world = serverLevel.getWorld();
+        org.bukkit.plugin.Plugin plugin = org.bukkit.Bukkit.getPluginManager().getPlugin("FastAsyncWorldEdit");
+        if (plugin == null) {
+            return;
+        }
+
+        // Process each chunk
         for (ChunkPos pos : coords) {
             int x = pos.x;
             int z = pos.z;
-            if (delay) { // we still need to send the block changes of that chunk
-                PaperweightPlatformAdapter.sendChunk(new IntPair(x, z), serverLevel, x, z);
-            }
+            
+            // Remove the ticket first as it's thread-safe
             serverLevel.getChunkSource().removeTicketAtLevel(FAWE_TICKET, pos, LIGHT_LEVEL);
+            
+            // Schedule chunk sending on the correct thread
+            world.getChunkAtAsync(x, z).thenAccept(chunk -> {
+                // This runs on the chunk's region thread
+                try {
+                    PaperweightPlatformAdapter.sendChunk(chunk);
+                } catch (Exception e) {
+                    LOGGER.error("Error sending chunk update for {}, {}", x, z, e);
+                }
+            });
         }
     }
-
 }

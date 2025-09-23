@@ -164,7 +164,8 @@ public class BukkitImplLoader {
      * @return an adapter
      * @throws AdapterLoadException thrown if no adapter could be found
      */
-    public BukkitImplAdapter loadAdapter() throws AdapterLoadException {
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public <T> BukkitImplAdapter<T> loadAdapter() throws AdapterLoadException {
         // FAWE - do not initialize classes on lookup
         final ClassLoader classLoader = this.getClass().getClassLoader();
         for (String className : adapterCandidates) {
@@ -174,7 +175,7 @@ public class BukkitImplLoader {
                     continue;
                 }
                 if (BukkitImplAdapter.class.isAssignableFrom(cls)) {
-                    return (BukkitImplAdapter) cls.newInstance();
+                    return (BukkitImplAdapter<T>) cls.getConstructor().newInstance();
                 }
             } catch (ClassNotFoundException e) {
                 LOGGER.warn("Failed to load the Bukkit adapter class '" + className

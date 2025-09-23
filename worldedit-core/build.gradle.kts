@@ -67,7 +67,7 @@ tasks.named<Test>("test") {
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    dependsOn(":worldedit-libs:build")
+    dependsOn(":worldedit-libs:bukkit:build", ":worldedit-libs:core:build", ":worldedit-libs:cli:build")
     options.compilerArgs.add("-Aarg.name.key.prefix=")
 }
 

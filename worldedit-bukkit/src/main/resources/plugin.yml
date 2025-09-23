@@ -3,6 +3,7 @@ main: com.sk89q.worldedit.bukkit.WorldEditPlugin
 version: "${internalVersion}"
 load: STARTUP
 api-version: 1.20
+folia-supported: true
 softdepend: [ Vault ]
 provides: [ WorldEdit ]
 website: https://modrinth.com/plugin/fastasyncworldedit/

@@ -49,6 +49,7 @@ public class PaperweightStarlightRelighter extends StarlightRelighter<ServerLeve
                 ));
     }
 
+    @Override
     protected void invokeRelight(
             Set<ChunkPos> coords,
             Consumer<ChunkPos> chunkCallback,
@@ -65,6 +66,7 @@ public class PaperweightStarlightRelighter extends StarlightRelighter<ServerLeve
      * Allow the server to unload the chunks again.
      * Also, if chunk packets are sent delayed, we need to do that here
      */
+    @Override
     protected void postProcessChunks(Set<ChunkPos> coords) {
         boolean delay = Settings.settings().LIGHTING.DELAY_PACKET_SENDING;
         for (ChunkPos pos : coords) {

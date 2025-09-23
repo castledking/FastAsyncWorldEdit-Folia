@@ -24,6 +24,7 @@ package com.sk89q.worldedit.bukkit;
 import com.fastasyncworldedit.core.configuration.Settings;
 import com.fastasyncworldedit.core.util.UpdateNotification;
 import com.sk89q.worldedit.LocalSession;
+import com.fastasyncworldedit.bukkit.util.FoliaTaskManager;
 import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.entity.Player;
 import com.sk89q.worldedit.event.platform.SessionIdleEvent;
@@ -90,21 +91,60 @@ public class WorldEditListener implements Listener {
             return;
         }
 
-        BukkitPlayer player = plugin.wrapPlayer(event.getPlayer());
-        //If plugins do silly things like teleport, deop (anything that requires a perm-recheck) (anything that ultimately
-        // requires a BukkitPlayer at some point) then the retention of metadata by the server (as it's stored based on a
-        // string value indescriminate of player a player relogging) means that a BukkitPlayer caching an old player object
-        // will be kept, cached and retrieved by FAWE. Adding a simple memory-based equality check when the player rejoins,
-        // and then "invaliding" (redoing) the cache if the players are not equal, fixes this.
-        if (player.getPlayer() != event.getPlayer()) {
-            player = plugin.reCachePlayer(event.getPlayer());
+        // Get player reference
+        org.bukkit.entity.Player bukkitPlayer = event.getPlayer();
+        if (bukkitPlayer == null || !bukkitPlayer.isOnline()) {
+            return; // Player already left
         }
-        LocalSession session;
-        if ((session = WorldEdit.getInstance().getSessionManager().getIfPresent(player)) != null) {
-            session.loadDefaults(player, true);
+
+        // Check if running on Folia
+        boolean isFolia;
+        try {
+            Class.forName("io.papermc.paper.threadedregions.scheduler.RegionScheduler");
+            isFolia = true;
+        } catch (ClassNotFoundException e) {
+            isFolia = false;
         }
-        if (Settings.settings().ENABLED_COMPONENTS.NOTIFY_UPDATE_INGAME) {
-            UpdateNotification.doUpdateNotification(player);
+        
+        // Run permission check in a task
+        if (isFolia) {
+            // Folia-compatible scheduling
+            bukkitPlayer.getScheduler().run(plugin, scheduledTask -> {
+                if (!bukkitPlayer.isOnline()) return;
+                
+                BukkitPlayer wrappedPlayer = plugin.wrapPlayer(bukkitPlayer);
+                if (wrappedPlayer.getPlayer() != bukkitPlayer) {
+                    wrappedPlayer = plugin.reCachePlayer(bukkitPlayer);
+                }
+                
+                // Create final copy for use in lambda
+                final BukkitPlayer finalPlayer = wrappedPlayer;
+                
+                // Schedule sync operations
+                bukkitPlayer.getScheduler().run(plugin, syncTask -> {
+                    if (!bukkitPlayer.isOnline()) return;
+                    processPlayerJoin(finalPlayer);
+                }, null);
+            }, null);
+        } else {
+            // Standard Bukkit scheduling
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                if (!bukkitPlayer.isOnline()) return;
+                
+                BukkitPlayer wrappedPlayer = plugin.wrapPlayer(bukkitPlayer);
+                if (wrappedPlayer.getPlayer() != bukkitPlayer) {
+                    wrappedPlayer = plugin.reCachePlayer(bukkitPlayer);
+                }
+                
+                // Create final copy for use in lambda
+                final BukkitPlayer finalPlayer = wrappedPlayer;
+                
+                // Schedule sync operations
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (!bukkitPlayer.isOnline()) return;
+                    processPlayerJoin(finalPlayer);
+                });
+            });
         }
     }
     //FAWE end
@@ -182,6 +222,32 @@ public class WorldEditListener implements Listener {
         }
     }
 
+    /**
+     * Process player join on the main thread after async operations are complete.
+     * This method loads the player's session defaults and shows update notifications if enabled.
+     *
+     * @param player The Bukkit player to process
+     */
+    private void processPlayerJoin(BukkitPlayer player) {
+        if (player == null || !player.getPlayer().isOnline()) {
+            return;
+        }
+        
+        try {
+            LocalSession session = WorldEdit.getInstance().getSessionManager().getIfPresent(player);
+            if (session != null) {
+                session.loadDefaults(player, true);
+            }
+            
+            if (Settings.settings().ENABLED_COMPONENTS.NOTIFY_UPDATE_INGAME) {
+                UpdateNotification.doUpdateNotification(player);
+            }
+        } catch (Exception e) {
+            // Log any errors that occur during player join processing
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "Error processing player join for " + player.getName(), e);
+        }
+    }
+    
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         debouncer.clearInteraction(plugin.wrapPlayer(event.getPlayer()));

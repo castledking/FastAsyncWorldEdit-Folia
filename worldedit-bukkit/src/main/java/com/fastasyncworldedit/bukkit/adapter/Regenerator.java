@@ -101,7 +101,7 @@ public abstract class Regenerator {
         source.init(target, initSourceQueueCache(), null);
     }
 
-    private void copyToWorld() {
+    public void copyToWorld() {
         createSource();
         final long timeoutPerTick = TimeUnit.MILLISECONDS.toNanos(10);
         int taskId = TaskManager.taskManager().repeat(() -> {

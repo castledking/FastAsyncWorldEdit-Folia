@@ -241,15 +241,34 @@ public class BukkitPlayer extends AbstractPlayerActor {
             }
         }
         org.bukkit.World finalWorld = world;
-        //FAWE end
-        return TaskManager.taskManager().sync(() -> player.teleport(new Location(
-                finalWorld,
-                pos.x(),
-                pos.y(),
-                pos.z(),
-                yaw,
-                pitch
-        )));
+        Location location = new Location(
+            finalWorld,
+            pos.x(),
+            pos.y(),
+            pos.z(),
+            yaw,
+            pitch
+        );
+        
+        // Check if we're on Folia
+        boolean isFolia;
+        try {
+            Class.forName("io.papermc.paper.threadedregions.scheduler.RegionScheduler");
+            isFolia = true;
+        } catch (ClassNotFoundException e) {
+            isFolia = false;
+        }
+        
+        if (isFolia) {
+            // Use teleportAsync for Folia
+            return TaskManager.taskManager().sync(() -> {
+                player.teleportAsync(location);
+                return true;
+            });
+        } else {
+            // Use regular teleport for non-Folia
+            return TaskManager.taskManager().sync(() -> player.teleport(location));
+        }
     }
 
     @Override

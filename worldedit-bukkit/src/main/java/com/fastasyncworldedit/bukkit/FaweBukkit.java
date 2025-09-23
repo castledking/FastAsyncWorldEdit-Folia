@@ -11,6 +11,7 @@ import com.fastasyncworldedit.bukkit.regions.ResidenceFeature;
 import com.fastasyncworldedit.bukkit.regions.TownyFeature;
 import com.fastasyncworldedit.bukkit.regions.WorldGuardFeature;
 import com.fastasyncworldedit.bukkit.util.BukkitTaskManager;
+import com.fastasyncworldedit.bukkit.util.FoliaTaskManager;
 import com.fastasyncworldedit.bukkit.util.ItemUtil;
 import com.fastasyncworldedit.bukkit.util.image.BukkitImageViewer;
 import com.fastasyncworldedit.core.FAWEPlatformAdapterImpl;
@@ -169,10 +170,31 @@ public class FaweBukkit implements IFawe, Listener {
 
     /**
      * The task manager handles sync/async tasks.
+     * Detects if running on Folia and uses appropriate scheduler.
      */
     @Override
     public TaskManager getTaskManager() {
-        return new BukkitTaskManager(plugin);
+        if (isFolia()) {
+            LOGGER.info("Detected Folia server - using FoliaTaskManager");
+            return new FoliaTaskManager(plugin);
+        } else {
+            return new BukkitTaskManager(plugin);
+        }
+    }
+
+    /**
+     * Detect if the server is running Folia.
+     * Folia is a Paper fork that uses region-based threading.
+     */
+    private boolean isFolia() {
+        try {
+            // Check for Folia-specific classes
+            Class.forName("io.papermc.paper.threadedregions.scheduler.RegionScheduler");
+            LOGGER.info("Folia detected - enabling Folia support");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
     }
 
     public Plugin getPlugin() {

@@ -111,7 +111,7 @@ public class WorldEditPlugin extends JavaPlugin {
     private static WorldEditPlugin INSTANCE;
     private static final int BSTATS_ID = 1403;
 
-    private final SimpleLifecycled<BukkitImplAdapter> adapter =
+    private final SimpleLifecycled<BukkitImplAdapter<Object>> adapter =
             SimpleLifecycled.invalid();
     private BukkitServerInterface platform;
     private BukkitConfiguration config;
@@ -422,7 +422,7 @@ public class WorldEditPlugin extends JavaPlugin {
             LOGGER.warn("Failed to search " + getFile() + " for Bukkit adapters", e);
         }
         try {
-            BukkitImplAdapter bukkitAdapter = adapterLoader.loadAdapter();
+            BukkitImplAdapter<Object> bukkitAdapter = adapterLoader.loadAdapter();
             LOGGER.info("Using " + bukkitAdapter.getClass().getCanonicalName() + " as the Bukkit adapter");
             this.adapter.newValue(bukkitAdapter);
         } catch (AdapterLoadException e) {
@@ -456,7 +456,24 @@ public class WorldEditPlugin extends JavaPlugin {
         if (config != null) {
             config.unload();
         }
-        this.getServer().getScheduler().cancelTasks(this);
+        
+        // Only cancel tasks if we're not on Folia
+        if (!isFolia()) {
+            try {
+                this.getServer().getScheduler().cancelTasks(this);
+            } catch (UnsupportedOperationException e) {
+                // Ignore - Folia throws this
+            }
+        }
+    }
+    
+    private boolean isFolia() {
+        try {
+            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
     }
 
     /**
@@ -685,12 +702,41 @@ public class WorldEditPlugin extends JavaPlugin {
      *
      * @return the adapter
      */
-    Lifecycled<BukkitImplAdapter> getLifecycledBukkitImplAdapter() {
+    Lifecycled<BukkitImplAdapter<Object>> getLifecycledBukkitImplAdapter() {
         return adapter;
     }
 
+    /**
+     * Get the Bukkit implementation adapter without specifying a type.
+     * This is provided for backward compatibility.
+     * 
+     * @return the adapter, or null if not available
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public BukkitImplAdapter getBukkitImplAdapter() {
-        return adapter.value().orElse(null);
+        return (BukkitImplAdapter) adapter.value().orElse(null);
+    }
+
+    /**
+     * Get the Bukkit implementation adapter for a specific type.
+     *
+     * @param <T> the type parameter
+     * @param type the class of the type
+     * @return the adapter, or null if not available
+     */
+    @SuppressWarnings("unchecked")
+    public <T> BukkitImplAdapter<T> getBukkitImplAdapter(Class<T> type) {
+        BukkitImplAdapter<Object> adapter = this.adapter.value().orElse(null);
+        if (adapter == null) {
+            return null;
+        }
+        return (BukkitImplAdapter<T>) adapter;
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> T getBukkitImplAdapterAs(Class<T> type) {
+        BukkitImplAdapter<Object> adapter = this.adapter.value().orElse(null);
+        return type.isInstance(adapter) ? (T) adapter : null;
     }
 
     private class WorldInitListener implements Listener {
