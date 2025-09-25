@@ -199,48 +199,65 @@ public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, L
 
     @Override
     public FaweCompoundTag tile(final int x, final int y, final int z) {
-        BlockEntity blockEntity = getChunk().getBlockEntity(new BlockPos((x & 15) + (
-                chunkX << 4), y, (z & 15) + (
-                chunkZ << 4)));
-        if (blockEntity == null) {
+        try {
+            BlockEntity blockEntity = getChunk().getBlockEntity(new BlockPos((x & 15) + (
+                    chunkX << 4), y, (z & 15) + (
+                    chunkZ << 4)));
+            if (blockEntity == null) {
+                return null;
+            }
+            return NMS_TO_TILE.apply(blockEntity);
+        } catch (NullPointerException e) {
+            // Handle case where chunk's world data is null
+            LOGGER.debug("Cannot read block entity at {}, {}, {} due to null world data in chunk", x, y, z, e);
             return null;
         }
-        return NMS_TO_TILE.apply(blockEntity);
-
     }
 
     @Override
     public Map<BlockVector3, FaweCompoundTag> tiles() {
-        Map<BlockPos, BlockEntity> nmsTiles = getChunk().getBlockEntities();
-        if (nmsTiles.isEmpty()) {
+        try {
+            Map<BlockPos, BlockEntity> nmsTiles = getChunk().getBlockEntities();
+            if (nmsTiles.isEmpty()) {
+                return Collections.emptyMap();
+            }
+            return AdaptedMap.immutable(nmsTiles, posNms2We, NMS_TO_TILE);
+        } catch (NullPointerException e) {
+            // Handle case where chunk's world data is null
+            LOGGER.debug("Cannot read block entities due to null world data in chunk", e);
             return Collections.emptyMap();
         }
-        return AdaptedMap.immutable(nmsTiles, posNms2We, NMS_TO_TILE);
     }
 
     @Override
     public int getSkyLight(int x, int y, int z) {
-        int layer = y >> 4;
-        int alayer = layer - getMinSectionPosition();
-        if (skyLight[alayer] == null) {
-            SectionPos sectionPos = SectionPos.of(getChunk().getPos(), layer);
-            DataLayer dataLayer =
-                    serverLevel.getChunkSource().getLightEngine().getLayerListener(LightLayer.SKY).getDataLayerData(sectionPos);
-            // If the server hasn't generated the section's NibbleArray yet, it will be null
-            if (dataLayer == null) {
-                byte[] LAYER_COUNT = new byte[2048];
-                // Safe enough to assume if it's not created, it's under the sky. Unlikely to be created before lighting is fixed anyway.
-                Arrays.fill(LAYER_COUNT, (byte) 15);
-                dataLayer = new DataLayer(LAYER_COUNT);
-                ((LevelLightEngine) serverLevel.getChunkSource().getLightEngine()).queueSectionData(
-                        LightLayer.BLOCK,
-                        sectionPos,
-                        dataLayer
-                );
+        try {
+            int layer = y >> 4;
+            int alayer = layer - getMinSectionPosition();
+            if (skyLight[alayer] == null) {
+                SectionPos sectionPos = SectionPos.of(getChunk().getPos(), layer);
+                DataLayer dataLayer =
+                        serverLevel.getChunkSource().getLightEngine().getLayerListener(LightLayer.SKY).getDataLayerData(sectionPos);
+                // If the server hasn't generated the section's NibbleArray yet, it will be null
+                if (dataLayer == null) {
+                    byte[] LAYER_COUNT = new byte[2048];
+                    // Safe enough to assume if it's not created, it's under the sky. Unlikely to be created before lighting is fixed anyway.
+                    Arrays.fill(LAYER_COUNT, (byte) 15);
+                    dataLayer = new DataLayer(LAYER_COUNT);
+                    ((LevelLightEngine) serverLevel.getChunkSource().getLightEngine()).queueSectionData(
+                            LightLayer.BLOCK,
+                            sectionPos,
+                            dataLayer
+                    );
+                }
+                skyLight[alayer] = dataLayer;
             }
-            skyLight[alayer] = dataLayer;
+            return skyLight[alayer].get(x & 15, y & 15, z & 15);
+        } catch (NullPointerException e) {
+            // Handle case where chunk's world data is null
+            LOGGER.debug("Cannot read sky light at {}, {}, {} due to null world data in chunk", x, y, z, e);
+            return 15;
         }
-        return skyLight[alayer].get(x & 15, y & 15, z & 15);
     }
 
     @Override
@@ -272,9 +289,15 @@ public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, L
 
     @Override
     public int[] getHeightMap(HeightMapType type) {
-        long[] longArray = getChunk().heightmaps.get(Heightmap.Types.valueOf(type.name())).getRawData();
-        BitArrayUnstretched bitArray = new BitArrayUnstretched(9, 256, longArray);
-        return bitArray.toRaw(new int[256]);
+        try {
+            long[] longArray = getChunk().heightmaps.get(Heightmap.Types.valueOf(type.name())).getRawData();
+            BitArrayUnstretched bitArray = new BitArrayUnstretched(9, 256, longArray);
+            return bitArray.toRaw(new int[256]);
+        } catch (NullPointerException e) {
+            // Handle case where chunk's world data is null
+            LOGGER.debug("Cannot read height map for type {} due to null world data in chunk", type, e);
+            return new int[256];
+        }
     }
 
     @Override
@@ -718,19 +741,56 @@ public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, L
                         final BlockPos pos = new BlockPos(x, y, z);
 
                         synchronized (nmsWorld) {
-                            BlockEntity tileEntity = nmsWorld.getBlockEntity(pos);
-                            if (tileEntity == null || tileEntity.isRemoved()) {
-                                nmsWorld.removeBlockEntity(pos);
-                                tileEntity = nmsWorld.getBlockEntity(pos);
-                            }
-                            if (tileEntity != null) {
-                                final CompoundTag tag = (CompoundTag) adapter.fromNativeLin(nativeTag.linTag());
-                                tag.put("x", IntTag.valueOf(x));
-                                tag.put("y", IntTag.valueOf(y));
-                                tag.put("z", IntTag.valueOf(z));
-                                // TODO (VI/O)
-                                ValueInput input = createInput(tag);
-                                tileEntity.loadWithComponents(input);
+                            try {
+                                // Check if the world is still valid and loaded
+                                if (nmsWorld == null || nmsWorld.getWorld() == null) {
+                                    LOGGER.warn("Skipping block entity at {}, {}, {} because world is not available", x, y, z);
+                                    return;
+                                }
+                                
+                                // Check if chunk is loaded
+                                if (!nmsWorld.getWorld().isChunkLoaded(pos.getX() >> 4, pos.getZ() >> 4)) {
+                                    LOGGER.debug("Skipping block entity at {}, {}, {} because chunk is not loaded", x, y, z);
+                                    return;
+                                }
+                                
+                                // Safely get the block entity
+                                BlockEntity tileEntity;
+                                try {
+                                    tileEntity = nmsWorld.getBlockEntity(pos);
+                                    if (tileEntity == null || tileEntity.isRemoved()) {
+                                        nmsWorld.removeBlockEntity(pos);
+                                        tileEntity = nmsWorld.getBlockEntity(pos);
+                                    }
+                                } catch (NullPointerException e) {
+                                    LOGGER.debug("Failed to process block entity at {}, {}, {}: {}", x, y, z, e.getMessage());
+                                    return;
+                                }
+                                
+                                if (tileEntity != null && !tileEntity.isRemoved()) {
+                                    try {
+                                        final CompoundTag tag = (CompoundTag) adapter.fromNativeLin(nativeTag.linTag());
+                                        if (tag != null) {
+                                            tag.put("x", IntTag.valueOf(x));
+                                            tag.put("y", IntTag.valueOf(y));
+                                            tag.put("z", IntTag.valueOf(z));
+                                            // TODO (VI/O)
+                                            ValueInput input = createInput(tag);
+                                            tileEntity.loadWithComponents(input);
+                                        }
+                                    } catch (NullPointerException e) {
+                                        if (e.getMessage() != null && e.getMessage().contains("capturedTileEntities")) {
+                                            LOGGER.debug("Skipping block entity at {}, {}, {} due to invalid world state: {}", x, y, z, e.getMessage());
+                                        } else {
+                                            LOGGER.warn("Failed to load block entity data at {}, {}, {}", x, y, z, e);
+                                        }
+                                    } catch (Exception e) {
+                                        LOGGER.warn("Failed to load block entity data at {}, {}, {}", x, y, z, e);
+                                    }
+                                }
+                            } catch (Exception e) {
+                                // Handle any other exceptions
+                                LOGGER.warn("Error processing block entity at {}, {}, {}", x, y, z, e);
                             }
                         }
                     }
@@ -899,6 +959,11 @@ public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, L
                     System.arraycopy(chunkSections, 0, tmp, 0, chunkSections.length);
                     sections = tmp;
                 }
+            } catch (NullPointerException e) {
+                // Handle case where chunk's world data is null
+                LOGGER.debug("Cannot read chunk sections due to null world data in chunk", e);
+                tmp = new LevelChunkSection[0];
+                sections = tmp;
             } finally {
                 sectionLock.writeLock().unlock();
             }
