@@ -13,6 +13,7 @@ import com.sk89q.worldedit.regions.Region;
 import com.sk89q.worldedit.world.RegenOptions;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -190,13 +191,16 @@ public class PaperweightDirectRegen extends Regenerator {
         LOGGER.info("Copying regenerated chunks to world via base Regenerator");
         super.copyToWorld(); // Use base Regenerator's copyToWorld to apply changes
 
-        // Commit EditSession changes
-        if (target instanceof EditSession) {
+        if (target instanceof EditSession editSession) {
             try {
-                ((EditSession) target).commit();
-                LOGGER.info("Committed EditSession to apply changes to world");
+                if (isFolia) {
+                    editSession.flushQueue();
+                } else {
+                    editSession.commit();
+                    LOGGER.info("Committed EditSession to apply changes to world");
+                }
             } catch (Exception e) {
-                LOGGER.severe("Failed to commit EditSession: " + e.getMessage());
+                LOGGER.severe("Failed to finalize EditSession: " + e.getMessage());
             }
         }
 
@@ -212,18 +216,16 @@ public class PaperweightDirectRegen extends Regenerator {
                     try {
                         org.bukkit.Chunk chunk = originalBukkitWorld.getChunkAt(cx, cz);
                         chunk.load(true); // Ensure chunk is loaded
-                        org.bukkit.ChunkSnapshot snapshot = chunk.getChunkSnapshot();
-                        LOGGER.info("Captured snapshot for chunk " + cx + ", " + cz + ", height: " + snapshot.getHighestBlockYAt(8, 8));
-                        for (Player player : originalBukkitWorld.getPlayers()) {
-                            ((org.bukkit.craftbukkit.entity.CraftPlayer) player).getHandle().connection.send(
-                                new ClientboundLevelChunkWithLightPacket(
-                                    originalServerWorld.getChunk(cx, cz),
-                                    originalServerWorld.getLightEngine(),
-                                    null,
-                                    null
-                                )
-                            );
-                        }
+                        ClientboundLevelChunkWithLightPacket packet = new ClientboundLevelChunkWithLightPacket(
+                            originalServerWorld.getChunk(cx, cz),
+                            originalServerWorld.getLightEngine(),
+                            null,
+                            null
+                    );
+                    java.util.List<ServerPlayer> players = originalServerWorld.getChunkSource().chunkMap.getPlayers(new net.minecraft.world.level.ChunkPos(cx, cz), false);
+                    for (ServerPlayer serverPlayer : players) {
+                        serverPlayer.connection.send(packet);
+                    }
                         future.complete(null);
                     } catch (Exception e) {
                         LOGGER.warning("Failed to refresh chunk " + cx + ", " + cz + ": " + e.getMessage());

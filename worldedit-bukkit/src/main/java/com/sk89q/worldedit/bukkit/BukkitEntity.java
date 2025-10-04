@@ -19,6 +19,8 @@
 
 package com.sk89q.worldedit.bukkit;
 
+import com.fastasyncworldedit.core.util.TaskManager;
+import com.sk89q.worldedit.bukkit.WorldEditPlugin;
 import com.sk89q.worldedit.bukkit.adapter.BukkitImplAdapter;
 import com.sk89q.worldedit.entity.BaseEntity;
 import com.sk89q.worldedit.entity.Entity;
@@ -31,6 +33,8 @@ import org.bukkit.entity.EntityType;
 
 import javax.annotation.Nullable;
 import java.lang.ref.WeakReference;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -45,6 +49,19 @@ public class BukkitEntity implements Entity {
     //FAWE start
     private final EntityType type;
     //FAWE end
+
+    private static final boolean IS_FOLIA;
+
+    static {
+        boolean folia;
+        try {
+            Class.forName("io.papermc.paper.threadedregions.scheduler.RegionScheduler");
+            folia = true;
+        } catch (ClassNotFoundException e) {
+            folia = false;
+        }
+        IS_FOLIA = folia;
+    }
 
     /**
      * Create a new instance.
@@ -99,10 +116,37 @@ public class BukkitEntity implements Entity {
 
             BukkitImplAdapter adapter = WorldEditPlugin.getInstance().getBukkitImplAdapter();
             if (adapter != null) {
-                return adapter.getEntity(entity);
-            } else {
-                return null;
+                if (!IS_FOLIA) {
+                    if (com.fastasyncworldedit.core.Fawe.isMainThread()) {
+                        return adapter.getEntity(entity);
+                    }
+                    return TaskManager.taskManager().sync(() -> adapter.getEntity(entity));
+                }
+
+                // Folia: ensure we hop onto the entity's owning region thread
+                CompletableFuture<BaseEntity> future = new CompletableFuture<>();
+                entity.getScheduler().run(WorldEditPlugin.getInstance(), scheduledTask -> {
+                    try {
+                        future.complete(adapter.getEntity(entity));
+                    } catch (Throwable t) {
+                        future.completeExceptionally(t);
+                    }
+                }, () -> future.completeExceptionally(new IllegalStateException("Entity scheduler task cancelled")));
+
+                try {
+                    return future.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                } catch (ExecutionException e) {
+                    Throwable cause = e.getCause();
+                    if (cause instanceof RuntimeException runtimeException) {
+                        throw runtimeException;
+                    }
+                    throw new RuntimeException(cause);
+                }
             }
+            return null;
         } else {
             return null;
         }

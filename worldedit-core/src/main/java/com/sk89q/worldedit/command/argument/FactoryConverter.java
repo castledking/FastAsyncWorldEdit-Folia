@@ -96,19 +96,20 @@ public class FactoryConverter<T> implements ArgumentConverter<T> {
                 Key.of(Mask.class, ClipboardMask.class),
                 new FactoryConverter<>(worldEdit, WorldEdit::getMaskFactory, "mask",
                         context -> {
+                            ClipboardHolder holder;
                             try {
-                                ClipboardHolder holder = context.getSession().getClipboard();
-                                Transform transform = MutatingOperationTransformHolder.transform(holder.getTransform()); //FAWE: mutate transform
-                                Extent target;
-                                if (transform.isIdentity()) {
-                                    target = holder.getClipboard();
-                                } else {
-                                    target = new BlockTransformExtent(holder.getClipboard(), transform);
-                                }
-                                context.setExtent(target);
+                                holder = context.getSession().getClipboard();
                             } catch (EmptyClipboardException e) {
-                                throw new IllegalStateException(e);
+                                return;
                             }
+                            Transform transform = MutatingOperationTransformHolder.transform(holder.getTransform()); //FAWE: mutate transform
+                            Extent target;
+                            if (transform.isIdentity()) {
+                                target = holder.getClipboard();
+                            } else {
+                                target = new BlockTransformExtent(holder.getClipboard(), transform);
+                            }
+                            context.setExtent(target);
                         }
                 )
         );

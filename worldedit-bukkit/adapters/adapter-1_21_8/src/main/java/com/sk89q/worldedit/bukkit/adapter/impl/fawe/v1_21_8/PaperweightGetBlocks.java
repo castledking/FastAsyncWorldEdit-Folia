@@ -14,6 +14,7 @@ import com.fastasyncworldedit.core.queue.IChunkSet;
 import com.fastasyncworldedit.core.util.MathMan;
 import com.fastasyncworldedit.core.util.NbtUtils;
 import com.fastasyncworldedit.core.util.collection.AdaptedMap;
+import com.fastasyncworldedit.core.util.TaskManager;
 import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldedit.bukkit.BukkitEntity;
 import com.sk89q.worldedit.bukkit.WorldEditPlugin;
@@ -59,6 +60,8 @@ import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.storage.TagValueOutput;
 import net.minecraft.world.level.storage.ValueInput;
 import org.apache.logging.log4j.Logger;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.craftbukkit.CraftWorld;
 import org.bukkit.craftbukkit.block.CraftBlock;
@@ -97,6 +100,18 @@ import static net.minecraft.core.registries.Registries.BIOME;
 public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, LevelChunk> {
 
     private static final Logger LOGGER = LogManagerCompat.getLogger();
+    private static final boolean IS_FOLIA;
+
+    static {
+        boolean folia;
+        try {
+            Class.forName("io.papermc.paper.threadedregions.scheduler.RegionScheduler");
+            folia = true;
+        } catch (ClassNotFoundException e) {
+            folia = false;
+        }
+        IS_FOLIA = folia;
+    }
 
     private static final Function<BlockPos, BlockVector3> posNms2We = v -> BlockVector3.at(v.getX(), v.getY(), v.getZ());
     public static final Function<BlockEntity, FaweCompoundTag> NMS_TO_TILE = ((PaperweightFaweAdapter) WorldEditPlugin
@@ -199,34 +214,35 @@ public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, L
 
     @Override
     public FaweCompoundTag tile(final int x, final int y, final int z) {
-        try {
-            BlockEntity blockEntity = getChunk().getBlockEntity(new BlockPos((x & 15) + (
-                    chunkX << 4), y, (z & 15) + (
-                    chunkZ << 4)));
-            if (blockEntity == null) {
+        return TaskManager.taskManager().sync(() -> {
+            try {
+                BlockPos blockPos = new BlockPos((x & 15) + (chunkX << 4), y, (z & 15) + (chunkZ << 4));
+                BlockEntity blockEntity = getChunk().getBlockEntity(blockPos);
+                if (blockEntity == null) {
+                    return null;
+                }
+                return NMS_TO_TILE.apply(blockEntity);
+            } catch (NullPointerException e) {
+                LOGGER.debug("Cannot read block entity at {}, {}, {} due to null world data in chunk", x, y, z, e);
                 return null;
             }
-            return NMS_TO_TILE.apply(blockEntity);
-        } catch (NullPointerException e) {
-            // Handle case where chunk's world data is null
-            LOGGER.debug("Cannot read block entity at {}, {}, {} due to null world data in chunk", x, y, z, e);
-            return null;
-        }
+        });
     }
 
     @Override
     public Map<BlockVector3, FaweCompoundTag> tiles() {
-        try {
-            Map<BlockPos, BlockEntity> nmsTiles = getChunk().getBlockEntities();
-            if (nmsTiles.isEmpty()) {
+        return TaskManager.taskManager().sync(() -> {
+            try {
+                Map<BlockPos, BlockEntity> nmsTiles = getChunk().getBlockEntities();
+                if (nmsTiles.isEmpty()) {
+                    return Collections.emptyMap();
+                }
+                return AdaptedMap.immutable(nmsTiles, posNms2We, NMS_TO_TILE);
+            } catch (NullPointerException e) {
+                LOGGER.debug("Cannot read block entities due to null world data in chunk", e);
                 return Collections.emptyMap();
             }
-            return AdaptedMap.immutable(nmsTiles, posNms2We, NMS_TO_TILE);
-        } catch (NullPointerException e) {
-            // Handle case where chunk's world data is null
-            LOGGER.debug("Cannot read block entities due to null world data in chunk", e);
-            return Collections.emptyMap();
-        }
+        });
     }
 
     @Override
@@ -695,29 +711,92 @@ public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, L
 
                         EntityType<?> type = EntityType.byString(id).orElse(null);
                         if (type != null) {
-                            Entity entity = type.create(nmsWorld, EntitySpawnReason.COMMAND);
-                            if (entity != null) {
-                                final CompoundTag tag = (CompoundTag) adapter.fromNativeLin(linTag);
-                                for (final String name : Constants.NO_COPY_ENTITY_NBT_FIELDS) {
-                                    tag.remove(name);
+                            if (!IS_FOLIA) {
+                                Entity entity = type.create(nmsWorld, EntitySpawnReason.COMMAND);
+                                if (entity != null) {
+                                    final CompoundTag tag = (CompoundTag) adapter.fromNativeLin(linTag);
+                                    for (final String name : Constants.NO_COPY_ENTITY_NBT_FIELDS) {
+                                        tag.remove(name);
+                                    }
+                                    ValueInput input = createInput(tag);
+                                    entity.load(input);
+                                    entity.absSnapTo(x, y, z, yaw, pitch);
+                                    entity.setUUID(NbtUtils.uuid(nativeTag));
+                                    if (!nmsWorld.addFreshEntity(entity, CreatureSpawnEvent.SpawnReason.CUSTOM)) {
+                                        LOGGER.warn(
+                                                "Error creating entity of type `{}` in world `{}` at location `{},{},{}`",
+                                                id,
+                                                nmsWorld.getWorld().getName(),
+                                                x,
+                                                y,
+                                                z
+                                        );
+                                        iterator.remove();
+                                    }
                                 }
-                                // TODO (VI/O)
-                                ValueInput input = createInput(tag);
-                                entity.load(input);
-                                entity.absSnapTo(x, y, z, yaw, pitch);
-                                entity.setUUID(NbtUtils.uuid(nativeTag));
-                                if (!nmsWorld.addFreshEntity(entity, CreatureSpawnEvent.SpawnReason.CUSTOM)) {
-                                    LOGGER.warn(
-                                            "Error creating entity of type `{}` in world `{}` at location `{},{},{}`",
-                                            id,
-                                            nmsWorld.getWorld().getName(),
-                                            x,
-                                            y,
-                                            z
-                                    );
-                                    // Unsuccessful create should not be saved to history
-                                    iterator.remove();
+                                continue;
+                            }
+
+                            World bukkitWorld = nmsWorld.getWorld();
+                            if (bukkitWorld == null) {
+                                LOGGER.warn("Skipping entity paste for `{}` at {},{},{} because Bukkit world is unavailable", id, x, y, z);
+                                iterator.remove();
+                                continue;
+                            }
+
+                            final CompoundTag tag = (CompoundTag) adapter.fromNativeLin(linTag);
+                            for (final String name : Constants.NO_COPY_ENTITY_NBT_FIELDS) {
+                                tag.remove(name);
+                            }
+
+                            Location location = new Location(bukkitWorld, x, y, z);
+                            CompletableFuture<Boolean> spawnFuture = new CompletableFuture<>();
+                            Bukkit.getRegionScheduler().run(WorldEditPlugin.getInstance(), location, scheduledTask -> {
+                                if (spawnFuture.isDone()) {
+                                    scheduledTask.cancel();
+                                    return;
                                 }
+                                try {
+                                    Entity entity = type.create(nmsWorld, EntitySpawnReason.COMMAND);
+                                    if (entity == null) {
+                                        spawnFuture.complete(false);
+                                        return;
+                                    }
+                                    ValueInput input = createInput(tag);
+                                    entity.load(input);
+                                    entity.absSnapTo(x, y, z, yaw, pitch);
+                                    entity.setUUID(NbtUtils.uuid(nativeTag));
+                                    boolean success = nmsWorld.addFreshEntity(entity, CreatureSpawnEvent.SpawnReason.CUSTOM);
+                                    spawnFuture.complete(success);
+                                } catch (Throwable t) {
+                                    spawnFuture.completeExceptionally(t);
+                                }
+                            });
+
+                            boolean success;
+                            try {
+                                success = spawnFuture.get();
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                LOGGER.warn("Interrupted while spawning entity `{}` at {},{},{}", id, x, y, z, e);
+                                iterator.remove();
+                                continue;
+                            } catch (ExecutionException e) {
+                                LOGGER.warn("Error spawning entity `{}` at {},{},{}", id, x, y, z, e.getCause());
+                                iterator.remove();
+                                continue;
+                            }
+
+                            if (!success) {
+                                LOGGER.warn(
+                                        "Error creating entity of type `{}` in world `{}` at location `{},{},{}`",
+                                        id,
+                                        bukkitWorld.getName(),
+                                        x,
+                                        y,
+                                        z
+                                );
+                                iterator.remove();
                             }
                         }
                     }
@@ -740,58 +819,82 @@ public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, L
                         final int z = blockHash.z() + bz;
                         final BlockPos pos = new BlockPos(x, y, z);
 
-                        synchronized (nmsWorld) {
+                        World bukkitWorld = nmsWorld.getWorld();
+                        if (bukkitWorld == null) {
+                            LOGGER.warn("Skipping block entity at {}, {}, {} because world is not available", x, y, z);
+                            continue;
+                        }
+                        if (!bukkitWorld.isChunkLoaded(pos.getX() >> 4, pos.getZ() >> 4)) {
+                            LOGGER.debug("Skipping block entity at {}, {}, {} because chunk is not loaded", x, y, z);
+                            continue;
+                        }
+
+                        final CompoundTag tag = (CompoundTag) adapter.fromNativeLin(nativeTag.linTag());
+                        if (tag == null) {
+                            continue;
+                        }
+                        tag.put("x", IntTag.valueOf(x));
+                        tag.put("y", IntTag.valueOf(y));
+                        tag.put("z", IntTag.valueOf(z));
+
+                        if (!IS_FOLIA) {
                             try {
-                                // Check if the world is still valid and loaded
-                                if (nmsWorld == null || nmsWorld.getWorld() == null) {
-                                    LOGGER.warn("Skipping block entity at {}, {}, {} because world is not available", x, y, z);
-                                    return;
-                                }
-                                
-                                // Check if chunk is loaded
-                                if (!nmsWorld.getWorld().isChunkLoaded(pos.getX() >> 4, pos.getZ() >> 4)) {
-                                    LOGGER.debug("Skipping block entity at {}, {}, {} because chunk is not loaded", x, y, z);
-                                    return;
-                                }
-                                
-                                // Safely get the block entity
-                                BlockEntity tileEntity;
-                                try {
+                                BlockEntity tileEntity = nmsWorld.getBlockEntity(pos);
+                                if (tileEntity == null || tileEntity.isRemoved()) {
+                                    nmsWorld.removeBlockEntity(pos);
                                     tileEntity = nmsWorld.getBlockEntity(pos);
-                                    if (tileEntity == null || tileEntity.isRemoved()) {
-                                        nmsWorld.removeBlockEntity(pos);
-                                        tileEntity = nmsWorld.getBlockEntity(pos);
-                                    }
-                                } catch (NullPointerException e) {
-                                    LOGGER.debug("Failed to process block entity at {}, {}, {}: {}", x, y, z, e.getMessage());
+                                }
+                                if (tileEntity == null) {
+                                    continue;
+                                }
+                                ValueInput input = createInput(tag);
+                                tileEntity.loadWithComponents(input);
+                                tileEntity.setChanged();
+                                nmsWorld.blockEntityChanged(pos);
+                        	    nmsWorld.sendBlockUpdated(pos, nmsWorld.getBlockState(pos), nmsWorld.getBlockState(pos), 3);
+                            } catch (Exception e) {
+                                LOGGER.warn("Failed to load block entity data at {}, {}, {}", x, y, z, e);
+                            }
+                            continue;
+                        }
+
+                        final Location location = new Location(bukkitWorld, x, y, z);
+                        final CompoundTag finalTag = tag;
+                        CompletableFuture<Void> tileFuture = new CompletableFuture<>();
+                        Bukkit.getRegionScheduler().run(WorldEditPlugin.getInstance(), location, scheduledTask -> {
+                            if (tileFuture.isDone()) {
+                                scheduledTask.cancel();
+                                return;
+                            }
+                            try {
+                                BlockEntity tileEntity = nmsWorld.getBlockEntity(pos);
+                                if (tileEntity == null || tileEntity.isRemoved()) {
+                                    nmsWorld.removeBlockEntity(pos);
+                                    tileEntity = nmsWorld.getBlockEntity(pos);
+                                }
+                                if (tileEntity == null) {
+                                    tileFuture.complete(null);
                                     return;
                                 }
-                                
-                                if (tileEntity != null && !tileEntity.isRemoved()) {
-                                    try {
-                                        final CompoundTag tag = (CompoundTag) adapter.fromNativeLin(nativeTag.linTag());
-                                        if (tag != null) {
-                                            tag.put("x", IntTag.valueOf(x));
-                                            tag.put("y", IntTag.valueOf(y));
-                                            tag.put("z", IntTag.valueOf(z));
-                                            // TODO (VI/O)
-                                            ValueInput input = createInput(tag);
-                                            tileEntity.loadWithComponents(input);
-                                        }
-                                    } catch (NullPointerException e) {
-                                        if (e.getMessage() != null && e.getMessage().contains("capturedTileEntities")) {
-                                            LOGGER.debug("Skipping block entity at {}, {}, {} due to invalid world state: {}", x, y, z, e.getMessage());
-                                        } else {
-                                            LOGGER.warn("Failed to load block entity data at {}, {}, {}", x, y, z, e);
-                                        }
-                                    } catch (Exception e) {
-                                        LOGGER.warn("Failed to load block entity data at {}, {}, {}", x, y, z, e);
-                                    }
-                                }
-                            } catch (Exception e) {
-                                // Handle any other exceptions
-                                LOGGER.warn("Error processing block entity at {}, {}, {}", x, y, z, e);
+                                ValueInput input = createInput(finalTag);
+                                tileEntity.loadWithComponents(input);
+                                tileEntity.setChanged();
+                                nmsWorld.blockEntityChanged(pos);
+                                nmsWorld.sendBlockUpdated(pos, nmsWorld.getBlockState(pos), nmsWorld.getBlockState(pos), 3);
+                                tileFuture.complete(null);
+                            } catch (Throwable t) {
+                                tileFuture.completeExceptionally(t);
                             }
+                        });
+                        try {
+                            tileFuture.get(30, java.util.concurrent.TimeUnit.SECONDS);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            LOGGER.warn("Interrupted while loading block entity at {}, {}, {}", x, y, z, e);
+                        } catch (ExecutionException e) {
+                            LOGGER.warn("Error loading block entity at {}, {}, {}", x, y, z, e.getCause());
+                        } catch (java.util.concurrent.TimeoutException e) {
+                            LOGGER.error("Timeout while loading block entity at {}, {}, {} after 30 seconds - this may cause server instability", x, y, z);
                         }
                     }
                 };
