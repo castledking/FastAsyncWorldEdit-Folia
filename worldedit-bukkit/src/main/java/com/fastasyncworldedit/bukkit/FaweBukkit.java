@@ -11,6 +11,7 @@ import com.fastasyncworldedit.bukkit.regions.ResidenceFeature;
 import com.fastasyncworldedit.bukkit.regions.TownyFeature;
 import com.fastasyncworldedit.bukkit.regions.WorldGuardFeature;
 import com.fastasyncworldedit.bukkit.util.BukkitTaskManager;
+import com.fastasyncworldedit.bukkit.util.FoliaTaskManager;
 import com.fastasyncworldedit.bukkit.util.ItemUtil;
 import com.fastasyncworldedit.bukkit.util.image.BukkitImageViewer;
 import com.fastasyncworldedit.core.FAWEPlatformAdapterImpl;
@@ -24,6 +25,7 @@ import com.fastasyncworldedit.core.regions.FaweMaskManager;
 import com.fastasyncworldedit.core.util.TaskManager;
 import com.fastasyncworldedit.core.util.WEManager;
 import com.fastasyncworldedit.core.util.image.ImageViewer;
+import com.fastasyncworldedit.core.util.FoliaSupport;
 import com.plotsquared.core.PlotSquared;
 import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.bukkit.BukkitAdapter;
@@ -172,6 +174,9 @@ public class FaweBukkit implements IFawe, Listener {
      */
     @Override
     public TaskManager getTaskManager() {
+        if (FoliaSupport.isFolia()) {
+            return new FoliaTaskManager();
+        }
         return new BukkitTaskManager(plugin);
     }
 

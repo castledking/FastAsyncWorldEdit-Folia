@@ -207,7 +207,16 @@ public class Fawe {
     }
 
     public static boolean isMainThread() {
-        return instance == null || instance.thread == Thread.currentThread();
+        if (instance == null) {
+            return true;
+        }
+        if (com.fastasyncworldedit.core.util.FoliaSupport.isFolia()) {
+            // In Folia, use the tick thread check instead of main thread check
+            return com.fastasyncworldedit.core.util.FoliaSupport.isTickThread();
+        } else {
+            // Traditional Bukkit/Spigot - check against main thread
+            return instance.thread == Thread.currentThread();
+        }
     }
 
     /**

@@ -457,7 +457,10 @@ public class WorldEditPlugin extends JavaPlugin {
         if (config != null) {
             config.unload();
         }
-        this.getServer().getScheduler().cancelTasks(this);
+        // In Folia, don't use legacy scheduler cancelTasks as it causes UnsupportedOperationException
+        if (!com.fastasyncworldedit.core.util.FoliaSupport.isFolia()) {
+            this.getServer().getScheduler().cancelTasks(this);
+        }
     }
 
     /**

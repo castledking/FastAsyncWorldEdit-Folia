@@ -91,6 +91,10 @@ public class PaperweightRegen extends Regenerator {
 
     @Override
     protected void runTasks(final BooleanSupplier shouldKeepTicking) {
+        if (com.fastasyncworldedit.core.util.FoliaSupport.isFolia()) {
+            // In Folia, skip task polling as it's incompatible with regionized world data
+            return;
+        }
         while (shouldKeepTicking.getAsBoolean()) {
             if (!this.freshWorld.getChunkSource().pollTask()) {
                 return;

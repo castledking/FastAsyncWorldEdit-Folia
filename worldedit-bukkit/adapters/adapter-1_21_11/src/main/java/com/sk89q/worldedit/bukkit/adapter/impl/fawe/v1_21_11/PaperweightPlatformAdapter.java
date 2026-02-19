@@ -327,9 +327,12 @@ public final class PaperweightPlatformAdapter extends NMSAdapter {
 
     private static void addTicket(ServerLevel serverLevel, int chunkX, int chunkZ) {
         // Ensure chunk is definitely loaded before applying a ticket
-        io.papermc.paper.util.MCUtil.MAIN_EXECUTOR.execute(() -> serverLevel
-                .getChunkSource()
-                .addTicketWithRadius(ChunkHolderManager.UNLOAD_COOLDOWN, new ChunkPos(chunkX, chunkZ), 0));
+        if (!com.fastasyncworldedit.core.util.FoliaSupport.isFolia()) {
+            // Traditional Bukkit/Spigot - use MAIN_EXECUTOR
+            io.papermc.paper.util.MCUtil.MAIN_EXECUTOR.execute(() -> serverLevel
+                    .getChunkSource()
+                    .addTicketWithRadius(ChunkHolderManager.UNLOAD_COOLDOWN, new ChunkPos(chunkX, chunkZ), 0));
+        }
     }
 
     public static ChunkHolder getPlayerChunk(ServerLevel nmsWorld, final int chunkX, final int chunkZ) {
@@ -362,7 +365,7 @@ public final class PaperweightPlatformAdapter extends NMSAdapter {
         if (lockHolder.chunkLock == null) {
             return;
         }
-        MinecraftServer.getServer().execute(() -> {
+        Runnable sendTask = () -> {
             try {
                 ChunkPos pos = levelChunk.getPos();
                 ClientboundLevelChunkWithLightPacket packet;
@@ -387,7 +390,12 @@ public final class PaperweightPlatformAdapter extends NMSAdapter {
             } finally {
                 NMSAdapter.endChunkPacketSend(nmsWorld.getWorld().getName(), pair, lockHolder);
             }
-        });
+        };
+        if (com.fastasyncworldedit.core.util.FoliaSupport.isFolia()) {
+            org.bukkit.Bukkit.getGlobalRegionScheduler().run(WorldEditPlugin.getInstance(), task -> sendTask.run());
+        } else {
+            MinecraftServer.getServer().execute(sendTask);
+        }
     }
 
     private static List<ServerPlayer> nearbyPlayers(ServerLevel serverLevel, ChunkPos coordIntPair) {
