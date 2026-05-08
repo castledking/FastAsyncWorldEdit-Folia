@@ -1,0 +1,77 @@
+name: Release on push
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-on-push-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          cache: gradle
+          java-version: 26
+
+      - name: Build Paper jar
+        run: ./gradlew --no-daemon --no-configure-on-demand --max-workers=2 :worldedit-bukkit:shadowJar --console=plain
+
+      - name: Prepare release metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          jar="$(find worldedit-bukkit/build/libs -maxdepth 1 -type f -name 'FastAsyncWorldEdit-Paper-*.jar' | sort | tail -n 1)"
+          version="$(unzip -p "$jar" plugin.yml | awk -F'"' '/^version:/ { print $2; exit }')"
+
+          if [ -z "$version" ]; then
+            echo "Failed to read plugin.yml version from $jar" >&2
+            exit 1
+          fi
+
+          git log -1 --pretty=%B > release-notes.md
+
+          echo "jar=$jar" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "asset_name=FastAsyncWorldEdit-Paper-$version.jar" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+          JAR: ${{ steps.metadata.outputs.jar }}
+          ASSET_NAME: ${{ steps.metadata.outputs.asset_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release edit "$VERSION" \
+              --title "$VERSION" \
+              --notes-file release-notes.md \
+              --target "$GITHUB_SHA"
+          else
+            gh release create "$VERSION" \
+              --title "$VERSION" \
+              --notes-file release-notes.md \
+              --target "$GITHUB_SHA"
+          fi
+
+          gh release upload "$VERSION" "$JAR#$ASSET_NAME" --clobber
