@@ -1,1 +1,23 @@
-_extends: .github
+name-template: '$RESOLVED_VERSION'
+tag-template: '$RESOLVED_VERSION'
+template: |
+  ## Changes
+
+  $CHANGES
+change-template: '* $TITLE (#$NUMBER) @$AUTHOR'
+no-changes-template: '* No changes'
+categories:
+  - title: 'Changes'
+    labels:
+      - '*'
+version-resolver:
+  major:
+    labels:
+      - 'major'
+  minor:
+    labels:
+      - 'minor'
+  patch:
+    labels:
+      - 'patch'
+  default: patch
