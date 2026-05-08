@@ -27,6 +27,7 @@ import com.fastasyncworldedit.core.internal.exception.FaweException;
 import com.fastasyncworldedit.core.nbt.FaweCompoundTag;
 import com.fastasyncworldedit.core.queue.IChunkGet;
 import com.fastasyncworldedit.core.queue.implementation.packet.ChunkPacket;
+import com.fastasyncworldedit.core.util.FoliaSupport;
 import com.fastasyncworldedit.core.util.TaskManager;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
@@ -377,6 +378,8 @@ public class BukkitWorld extends AbstractWorld {
         int Z = pt.z() >> 4;
         if (Fawe.isMainThread()) {
             world.getChunkAt(X, Z);
+        } else if (FoliaSupport.isFolia()) {
+            world.getChunkAtAsync(X, Z, true);
         } else if (PaperLib.isPaper()) {
             PaperLib.getChunkAtAsync(world, X, Z, true);
         }
