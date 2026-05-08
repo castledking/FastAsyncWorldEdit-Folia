@@ -230,6 +230,17 @@ tasks.register<ShadowJar>("shadowJar26_1") {
             "FAWE-Plugin-Jar-Type" to "mojang"
         )
     }
+    dependencies {
+        include(project(":worldedit-libs:core"))
+        include(project(":worldedit-libs:bukkit"))
+        include(project(":worldedit-core"))
+        include(dependency(libs.jchronic))
+        exclude(dependency(libs.jsr305))
+    }
+    minimize {
+        exclude(dependency(libs.jchronic))
+        exclude(dependency(libs.lz4Java))
+    }
     exclude("META-INF/INDEX.LIST", "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "module-info.class")
 }
 
