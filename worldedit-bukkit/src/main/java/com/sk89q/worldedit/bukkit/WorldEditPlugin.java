@@ -21,6 +21,7 @@ package com.sk89q.worldedit.bukkit;
 
 import com.fastasyncworldedit.bukkit.BukkitPermissionAttachmentManager;
 import com.fastasyncworldedit.bukkit.FaweBukkit;
+import com.fastasyncworldedit.bukkit.util.MinecraftVersion;
 import com.fastasyncworldedit.core.Fawe;
 import com.fastasyncworldedit.core.util.UpdateNotification;
 import com.fastasyncworldedit.core.util.WEManager;
@@ -141,22 +142,25 @@ public class WorldEditPlugin extends JavaPlugin {
         final String type = attributes.getValue("FAWE-Plugin-Jar-Type");
         Objects.requireNonNull(type, "Could not determine plugin jar type");
         if (PaperLib.isPaper()) {
-            if (PaperLib.getMinecraftVersion() < 20 || (PaperLib.getMinecraftVersion() == 20 && PaperLib.getMinecraftPatchVersion() < 5)) {
+            MinecraftVersion mcVer = MinecraftVersion.getCurrent();
+            boolean modernMojangMapped = mcVer.isEqualOrHigherThan(new MinecraftVersion(1, 20, 5))
+                    || mcVer.getMajor() > 1;
+            if (!modernMojangMapped) {
                 if (type.equals("mojang") && !Refraction.isMojangMapped()) {
                     throw new IllegalStateException(
                         """
-                        
+
                         **********************************************
                         ** You are using the wrong FAWE jar for your Minecraft version.
                         ** Download the correct FAWE jar from Modrinth: https://modrinth.com/plugin/fastasyncworldedit/
                         **********************************************"""
                     );
                 }
-            } else if (PaperLib.getMinecraftVersion() > 20 || (PaperLib.getMinecraftVersion() == 20 && PaperLib.getMinecraftPatchVersion() >= 5)) {
+            } else {
                 if (type.equals("spigot")) {
                     LOGGER.warn(
                         """
-                        
+
                         **********************************************
                         ** You are using the Spigot-mapped FAWE jar on a modern Paper version.
                         ** This will result in slower first-run times and wasted disk space from plugin remapping.

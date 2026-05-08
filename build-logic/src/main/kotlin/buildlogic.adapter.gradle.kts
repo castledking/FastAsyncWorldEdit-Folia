@@ -17,9 +17,6 @@ repositories {
     maven {
         name = "PaperMC"
         url = uri("https://repo.papermc.io/repository/maven-public/")
-        content {
-            excludeModule("io.papermc.paper", "dev-bundle")
-        }
     }
     maven {
         name = "EngineHub Repository"

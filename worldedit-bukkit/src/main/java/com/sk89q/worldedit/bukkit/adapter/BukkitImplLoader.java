@@ -40,7 +40,7 @@ public class BukkitImplLoader {
 
     private static final Logger LOGGER = LogManagerCompat.getLogger();
     private final List<String> adapterCandidates = new ArrayList<>();
-    private final String minorMCVersion = String.valueOf(MinecraftVersion.getCurrent().getMinor());
+    private final String mcVersionKey = buildVersionKey(MinecraftVersion.getCurrent());
     private int zeroth = 0;
     private String customCandidate;
 
@@ -48,6 +48,14 @@ public class BukkitImplLoader {
     private static final String SEARCH_PACKAGE_DOT = SEARCH_PACKAGE + ".";
     private static final String SEARCH_PATH = SEARCH_PACKAGE.replace(".", "/");
     private static final String CLASS_SUFFIX = ".class";
+
+    private static String buildVersionKey(MinecraftVersion ver) {
+        if (ver.getMajor() > 1) {
+            return ver.getMajor() + "_" + ver.getMinor();
+        }
+        int release = ver.getRelease();
+        return release > 0 ? ver.getMinor() + "_" + release : String.valueOf(ver.getMinor());
+    }
 
     private static final String LOAD_ERROR_MESSAGE =
             //FAWE start - exchange WorldEdit to FAWE & suggest to update Fawe & the server software
@@ -105,7 +113,7 @@ public class BukkitImplLoader {
                 int beginIndex = 0;
                 int endIndex = className.length() - CLASS_SUFFIX.length();
                 className = className.substring(beginIndex, endIndex);
-                if (className.contains(minorMCVersion)) {
+                if (className.contains(mcVersionKey)) {
                     adapterCandidates.add(zeroth, className);
                 } else {
                     adapterCandidates.add(className);
@@ -150,7 +158,7 @@ public class BukkitImplLoader {
             int beginIndex = 0;
             int endIndex = resource.length() - CLASS_SUFFIX.length();
             String className = resource.substring(beginIndex, endIndex);
-            if (className.contains(minorMCVersion)) {
+            if (className.contains(mcVersionKey)) {
                 adapterCandidates.add(zeroth, className);
             } else {
                 adapterCandidates.add(className);
