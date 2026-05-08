@@ -79,6 +79,16 @@ val adaptersReobf = configurations.create("adaptersReobf") {
     extendsFrom(adapters)
 }
 
+val adapter26_1 = configurations.create("adapter26_1") {
+    description = "26.1 adapter to include in the Folia release JAR (Mojmap)"
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    shouldResolveConsistentlyWith(configurations["runtimeClasspath"])
+    attributes {
+        attribute(Obfuscation.OBFUSCATION_ATTRIBUTE, objects.named(Obfuscation.NONE))
+    }
+}
+
 allprojects {
     configurations.configureEach {
         resolutionStrategy {
@@ -118,6 +128,7 @@ dependencies {
     project.project(":worldedit-bukkit:adapters").subprojects.forEach {
         "adapters"(project(it.path))
     }
+    "adapter26_1"(project(":worldedit-bukkit:adapters:adapter-26_1"))
     compileOnly(libs.worldguard) {
         exclude("com.sk89q.worldedit", "worldedit-bukkit")
         exclude("com.sk89q.worldedit", "worldedit-core")
@@ -202,6 +213,24 @@ tasks.named<ShadowJar>("shadowJar") {
             "FAWE-Plugin-Jar-Type" to "mojang"
         )
     }
+}
+
+tasks.register<ShadowJar>("shadowJar26_1") {
+    archiveFileName.set("${rootProject.name}-Paper-26_1-${project.version}.${archiveExtension.getOrElse("jar")}")
+    configurations = listOf(
+        project.configurations.runtimeClasspath.get(),
+        adapter26_1
+    )
+    from(project(":worldedit-core").sourceSets.main.get().output)
+    from(sourceSets.main.map { it.output })
+    manifest.from(tasks.jar.get().manifest)
+    manifest {
+        attributes(
+            "paperweight-mappings-namespace" to "mojang",
+            "FAWE-Plugin-Jar-Type" to "mojang"
+        )
+    }
+    exclude("META-INF/INDEX.LIST", "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "module-info.class")
 }
 
 tasks.withType<ShadowJar>().configureEach {

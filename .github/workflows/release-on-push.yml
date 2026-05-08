@@ -29,8 +29,8 @@ jobs:
           cache: gradle
           java-version: 26
 
-      - name: Build Paper jar
-        run: ./gradlew --no-daemon --no-configure-on-demand --max-workers=2 :worldedit-bukkit:shadowJar --console=plain
+      - name: Build 26.1 Paper jar
+        run: ./gradlew --no-daemon --no-configure-on-demand --max-workers=2 :worldedit-bukkit:shadowJar26_1 --console=plain
 
       - name: Prepare release metadata
         id: metadata
@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          jar="$(find worldedit-bukkit/build/libs -maxdepth 1 -type f -name 'FastAsyncWorldEdit-Paper-*.jar' | sort | tail -n 1)"
+          jar="$(find worldedit-bukkit/build/libs -maxdepth 1 -type f -name 'FastAsyncWorldEdit-Paper-26_1-*.jar' | sort | tail -n 1)"
           version="$(unzip -p "$jar" plugin.yml | awk -F'"' '/^version:/ { print $2; exit }')"
 
           if [ -z "$version" ]; then
@@ -50,7 +50,7 @@ jobs:
 
           echo "jar=$jar" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "asset_name=FastAsyncWorldEdit-Paper-$version.jar" >> "$GITHUB_OUTPUT"
+          echo "asset_name=FastAsyncWorldEdit-Paper-26_1-$version.jar" >> "$GITHUB_OUTPUT"
 
       - name: Create or update GitHub release
         env:
