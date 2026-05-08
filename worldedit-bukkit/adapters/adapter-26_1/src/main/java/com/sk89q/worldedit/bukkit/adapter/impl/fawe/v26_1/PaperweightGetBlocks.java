@@ -763,64 +763,14 @@ public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, L
                                 .putInt("x", x).putInt("y", y).putInt("z", z)
                                 .build();
 
-                        if (!IS_FOLIA) {
-                            try {
-                                BlockEntity tileEntity = nmsChunk.getBlockEntity(pos);
-                                if (tileEntity == null || tileEntity.isRemoved()) {
-                                    nmsChunk.removeBlockEntity(pos);
-                                    tileEntity = nmsChunk.getBlockEntity(pos);
-                                }
-                                if (tileEntity != null) {
-                                    ValueInput input = createInput(tagWithCoords);
-                                    tileEntity.loadWithComponents(input);
-                                    tileEntity.setChanged();
-                                    nmsWorld.blockEntityChanged(pos);
-                                    nmsWorld.sendBlockUpdated(pos, nmsWorld.getBlockState(pos), nmsWorld.getBlockState(pos), 3);
-                                }
-                            } catch (Exception e) {
-                                LOGGER.warn("Failed to load block entity data at {}, {}, {}", x, y, z, e);
-                            }
-                            continue;
-                        }
-
-                        // Folia-specific tile entity handling using region scheduler
-                        final Location location = new Location(bukkitWorld, x, y, z);
-                        final LinCompoundTag finalTag = tagWithCoords;
-                        CompletableFuture<Void> tileFuture = new CompletableFuture<>();
-                        Bukkit.getRegionScheduler().run(WorldEditPlugin.getInstance(), location, scheduledTask -> {
-                            if (tileFuture.isDone()) {
-                                scheduledTask.cancel();
-                                return;
-                            }
-                            try {
-                                BlockEntity tileEntity = nmsChunk.getBlockEntity(pos);
-                                if (tileEntity == null || tileEntity.isRemoved()) {
-                                    nmsChunk.removeBlockEntity(pos);
-                                    tileEntity = nmsChunk.getBlockEntity(pos);
-                                }
-                                if (tileEntity != null) {
-                                    ValueInput input = createInput(finalTag);
-                                    tileEntity.loadWithComponents(input);
-                                    tileEntity.setChanged();
-                                    nmsWorld.blockEntityChanged(pos);
-                                    nmsWorld.sendBlockUpdated(pos, nmsWorld.getBlockState(pos), nmsWorld.getBlockState(pos), 3);
-                                    tileFuture.complete(null);
-                                } else {
-                                    tileFuture.complete(null);
-                                }
-                            } catch (Throwable t) {
-                                tileFuture.completeExceptionally(t);
-                            }
-                        });
-                        try {
-                            tileFuture.get(30, java.util.concurrent.TimeUnit.SECONDS);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            LOGGER.warn("Interrupted while loading block entity at {}, {}, {}", x, y, z, e);
-                        } catch (java.util.concurrent.ExecutionException e) {
-                            LOGGER.warn("Error loading block entity at {}, {}, {}", x, y, z, e.getCause());
-                        } catch (java.util.concurrent.TimeoutException e) {
-                            LOGGER.error("Timeout while loading block entity at {}, {}, {} after 30 seconds", x, y, z);
+                        if (IS_FOLIA) {
+                            final Location location = new Location(bukkitWorld, x, y, z);
+                            final LinCompoundTag finalTag = tagWithCoords;
+                            Bukkit.getRegionScheduler().run(WorldEditPlugin.getInstance(), location, scheduledTask ->
+                                    loadBlockEntityData(nmsChunk, nmsWorld, pos, finalTag, x, y, z)
+                            );
+                        } else {
+                            loadBlockEntityData(nmsChunk, nmsWorld, pos, tagWithCoords, x, y, z);
                         }
                     }
                 });
@@ -849,6 +799,33 @@ public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, L
                 };
             }
             return handleCallFinalizer(syncTasks, callback, finalizer);
+        }
+    }
+
+    private void loadBlockEntityData(
+            LevelChunk nmsChunk,
+            ServerLevel nmsWorld,
+            BlockPos pos,
+            LinCompoundTag tag,
+            int x,
+            int y,
+            int z
+    ) {
+        try {
+            BlockEntity tileEntity = nmsChunk.getBlockEntity(pos);
+            if (tileEntity == null || tileEntity.isRemoved()) {
+                nmsChunk.removeBlockEntity(pos);
+                tileEntity = nmsChunk.getBlockEntity(pos);
+            }
+            if (tileEntity != null) {
+                ValueInput input = createInput(tag);
+                tileEntity.loadWithComponents(input);
+                tileEntity.setChanged();
+                nmsWorld.blockEntityChanged(pos);
+                nmsWorld.sendBlockUpdated(pos, nmsWorld.getBlockState(pos), nmsWorld.getBlockState(pos), 3);
+            }
+        } catch (Throwable e) {
+            LOGGER.warn("Failed to load block entity data at {}, {}, {}", x, y, z, e);
         }
     }
 
