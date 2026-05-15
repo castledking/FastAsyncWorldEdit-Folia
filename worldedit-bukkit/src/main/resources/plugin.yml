@@ -1,11 +1,11 @@
-name: FastAsyncWorldEdit
+name: WorldEdit
 main: com.sk89q.worldedit.bukkit.WorldEditPlugin
 version: "${internalVersion}"
 load: STARTUP
 api-version: 1.20
 softdepend: [ Vault ]
 folia-supported: true
-provides: [ WorldEdit ]
+provides: [ FastAsyncWorldEdit ]
 website: https://modrinth.com/plugin/fastasyncworldedit/
 description: Blazingly fast world manipulation for builders, large networks and developers.
 authors: [ Empire92, MattBDev, IronApollo, dordsor21, NotMyFault, castledking ]
