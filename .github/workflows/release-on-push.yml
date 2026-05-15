@@ -47,17 +47,17 @@ jobs:
           fi
 
           git log -1 --pretty=%B > release-notes.md
+          asset="worldedit-bukkit/build/libs/FastAsyncWorldEdit-Paper-26_1-$version.jar"
+          cp "$jar" "$asset"
 
-          echo "jar=$jar" >> "$GITHUB_OUTPUT"
+          echo "jar=$asset" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "asset_name=FastAsyncWorldEdit-Paper-26_1-$version.jar" >> "$GITHUB_OUTPUT"
 
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.metadata.outputs.version }}
           JAR: ${{ steps.metadata.outputs.jar }}
-          ASSET_NAME: ${{ steps.metadata.outputs.asset_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -74,4 +74,4 @@ jobs:
               --target "$GITHUB_SHA"
           fi
 
-          gh release upload "$VERSION" "$JAR#$ASSET_NAME" --clobber
+          gh release upload "$VERSION" "$JAR" --clobber
