@@ -5,7 +5,7 @@ plugins {
     id("signing")
 }
 
-ext["internalVersion"] = "$version+${rootProject.ext["gitCommitHash"]}"
+ext["internalVersion"] = "$version"
 
 val publishingExtension = the<PublishingExtension>()
 
