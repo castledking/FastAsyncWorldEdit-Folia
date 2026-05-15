@@ -1,0 +1,83 @@
+name: Release Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      jar_path:
+        description: 'Path to the pre-built jar file (relative to repo root)'
+        required: true
+        type: string
+      version:
+        description: 'Version string (e.g., 2.15.5-SNAPSHOT)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Upload pre-built jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-jar
+          path: ${{ inputs.jar_path }}
+
+      - name: Prepare release metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          jar="${{ inputs.jar_path }}"
+          version="${{ inputs.version }}"
+
+          if [ ! -f "$jar" ]; then
+            echo "Jar file not found: $jar" >&2
+            exit 1
+          fi
+
+          # Verify version from plugin.yml
+          jar_version="$(unzip -p "$jar" plugin.yml | awk -F'"' '/^version:/ { print $2; exit }')"
+          if [ "$jar_version" != "$version" ]; then
+            echo "Version mismatch: jar has $jar_version but input specified $version" >&2
+            exit 1
+          fi
+
+          git log -1 --pretty=%B > release-notes.md
+          asset="worldedit-bukkit/build/libs/FastAsyncWorldEdit-Paper-26_1-$version.jar"
+          if [ "$jar" != "$asset" ]; then
+            mkdir -p "$(dirname "$asset")"
+            cp "$jar" "$asset"
+          fi
+
+          echo "jar=$asset" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+          JAR: ${{ steps.metadata.outputs.jar }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release edit "$VERSION" \
+              --title "$VERSION" \
+              --notes-file release-notes.md \
+              --target "$GITHUB_SHA"
+          else
+            gh release create "$VERSION" \
+              --title "$VERSION" \
+              --notes-file release-notes.md \
+              --target "$GITHUB_SHA"
+          fi
+
+          gh release upload "$VERSION" "$JAR" --clobber
