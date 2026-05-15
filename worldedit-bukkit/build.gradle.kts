@@ -240,6 +240,7 @@ tasks.register<ShadowJar>("shadowJar26_1") {
     minimize {
         exclude(dependency(libs.jchronic))
         exclude(dependency(libs.lz4Java))
+        exclude(project(":worldedit-bukkit"))
     }
     exclude("META-INF/INDEX.LIST", "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "module-info.class")
 }

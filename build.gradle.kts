@@ -12,7 +12,7 @@ plugins {
     id("xyz.jpenilla.run-paper") version "3.0.2"
 }
 
-var rootVersion by extra("2.15.4")
+var rootVersion by extra("2.15.5")
 var snapshot by extra("SNAPSHOT")
 var revision: String by extra("")
 var buildNumber by extra("")
