@@ -3,8 +3,8 @@ name: Release Manual
 on:
   workflow_dispatch:
     inputs:
-      jar_path:
-        description: 'Path to the pre-built jar file (relative to repo root)'
+      artifact_name:
+        description: 'Name of the artifact containing the jar (e.g., release-jar)'
         required: true
         type: string
       version:
@@ -22,11 +22,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
-      - name: Upload pre-built jar
-        uses: actions/upload-artifact@v4
+      - name: Download artifact
+        uses: actions/download-artifact@v4
         with:
-          name: release-jar
-          path: ${{ inputs.jar_path }}
+          name: ${{ inputs.artifact_name }}
+          path: .
 
       - name: Prepare release metadata
         id: metadata
@@ -34,11 +34,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          jar="${{ inputs.jar_path }}"
+          jar="$(find . -name 'FastAsyncWorldEdit-Paper-26_1-*.jar' -type f | head -n 1)"
           version="${{ inputs.version }}"
 
-          if [ ! -f "$jar" ]; then
-            echo "Jar file not found: $jar" >&2
+          if [ -z "$jar" ]; then
+            echo "Jar file not found in artifact" >&2
             exit 1
           fi
 
