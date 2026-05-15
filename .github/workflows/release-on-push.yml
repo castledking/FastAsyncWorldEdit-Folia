@@ -48,7 +48,9 @@ jobs:
 
           git log -1 --pretty=%B > release-notes.md
           asset="worldedit-bukkit/build/libs/FastAsyncWorldEdit-Paper-26_1-$version.jar"
-          cp "$jar" "$asset"
+          if [ "$jar" != "$asset" ]; then
+            cp "$jar" "$asset"
+          fi
 
           echo "jar=$asset" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
