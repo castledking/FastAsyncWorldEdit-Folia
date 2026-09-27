@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          jar="$(find . -name 'FastAsyncWorldEdit-Paper-26_1-*.jar' -type f | head -n 1)"
+          jar="$(find . -name 'FastAsyncWorldEdit-*.jar' -type f | head -n 1)"
           version="${{ inputs.version }}"
 
           if [ -z "$jar" ]; then
@@ -50,7 +50,7 @@ jobs:
           fi
 
           git log -1 --pretty=%B > release-notes.md
-          asset="worldedit-bukkit/build/libs/FastAsyncWorldEdit-Paper-26_1-$version.jar"
+          asset="worldedit-bukkit/build/libs/FastAsyncWorldEdit-Folia-$version.jar"
           if [ "$jar" != "$asset" ]; then
             mkdir -p "$(dirname "$asset")"
             cp "$jar" "$asset"
