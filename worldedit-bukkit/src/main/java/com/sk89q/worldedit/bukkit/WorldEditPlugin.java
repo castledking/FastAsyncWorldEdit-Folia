@@ -21,7 +21,7 @@ package com.sk89q.worldedit.bukkit;
 
 import com.fastasyncworldedit.bukkit.BukkitPermissionAttachmentManager;
 import com.fastasyncworldedit.bukkit.FaweBukkit;
-import com.fastasyncworldedit.bukkit.util.MinecraftVersion;
+import com.fastasyncworldedit.bukkit.util.PaperSupport;
 import com.fastasyncworldedit.core.Fawe;
 import com.fastasyncworldedit.core.util.UpdateNotification;
 import com.fastasyncworldedit.core.util.WEManager;
@@ -37,7 +37,6 @@ import com.sk89q.worldedit.WorldEditManifest;
 import com.sk89q.worldedit.bukkit.adapter.AdapterLoadException;
 import com.sk89q.worldedit.bukkit.adapter.BukkitImplAdapter;
 import com.sk89q.worldedit.bukkit.adapter.BukkitImplLoader;
-import com.sk89q.worldedit.bukkit.adapter.Refraction;
 import com.sk89q.worldedit.event.platform.CommandEvent;
 import com.sk89q.worldedit.event.platform.CommandSuggestionEvent;
 import com.sk89q.worldedit.event.platform.PlatformReadyEvent;
@@ -50,6 +49,7 @@ import com.sk89q.worldedit.extent.inventory.BlockBag;
 import com.sk89q.worldedit.internal.anvil.ChunkDeleter;
 import com.sk89q.worldedit.internal.command.CommandUtil;
 import com.sk89q.worldedit.internal.util.LogManagerCompat;
+import com.sk89q.worldedit.registry.Registries;
 import com.sk89q.worldedit.util.lifecycle.Lifecycled;
 import com.sk89q.worldedit.util.lifecycle.SimpleLifecycled;
 import com.sk89q.worldedit.world.World;
@@ -59,7 +59,6 @@ import com.sk89q.worldedit.world.entity.EntityType;
 import com.sk89q.worldedit.world.gamemode.GameModes;
 import com.sk89q.worldedit.world.item.ItemCategory;
 import com.sk89q.worldedit.world.weather.WeatherTypes;
-import io.papermc.lib.PaperLib;
 import org.apache.logging.log4j.Logger;
 import org.bstats.bukkit.Metrics;
 import org.bstats.charts.SimplePie;
@@ -141,44 +140,28 @@ public class WorldEditPlugin extends JavaPlugin {
         Objects.requireNonNull(attributes, "Could not retrieve manifest attributes");
         final String type = attributes.getValue("FAWE-Plugin-Jar-Type");
         Objects.requireNonNull(type, "Could not determine plugin jar type");
-        if (PaperLib.isPaper()) {
-            MinecraftVersion mcVer = MinecraftVersion.getCurrent();
-            boolean modernMojangMapped = mcVer.isEqualOrHigherThan(new MinecraftVersion(1, 20, 5))
-                    || mcVer.getMajor() > 1;
-            if (!modernMojangMapped) {
-                if (type.equals("mojang") && !Refraction.isMojangMapped()) {
-                    throw new IllegalStateException(
+        if (PaperSupport.isPaper()) {
+            if (type.equals("spigot")) {
+                LOGGER.warn(
                         """
-
-                        **********************************************
-                        ** You are using the wrong FAWE jar for your Minecraft version.
-                        ** Download the correct FAWE jar from Modrinth: https://modrinth.com/plugin/fastasyncworldedit/
-                        **********************************************"""
-                    );
-                }
-            } else {
-                if (type.equals("spigot")) {
-                    LOGGER.warn(
-                        """
-
-                        **********************************************
-                        ** You are using the Spigot-mapped FAWE jar on a modern Paper version.
-                        ** This will result in slower first-run times and wasted disk space from plugin remapping.
-                        ** Download the Paper FAWE jar from Modrinth to avoid this: https://modrinth.com/plugin/fastasyncworldedit/
-                        **********************************************"""
-                    );
-                }
+                                
+                                **********************************************
+                                ** You are using the Spigot-mapped FAWE jar on a modern Paper version.
+                                ** This will result in slower first-run times and wasted disk space from plugin remapping.
+                                ** Download the Paper FAWE jar from Modrinth to avoid this: https://modrinth.com/plugin/fastasyncworldedit/
+                                **********************************************"""
+                );
             }
         } else {
             if (type.equals("mojang")) {
                 throw new IllegalStateException(
-                    """
-                    
-                    **********************************************
-                    ** You are attempting to run the Paper FAWE jar on a Spigot server.
-                    ** Either switch to Paper (https://papermc.io), or download the correct FAWE jar for your platform
-                    ** from Modrinth: https://modrinth.com/plugin/fastasyncworldedit/
-                    **********************************************"""
+                        """
+                                
+                                **********************************************
+                                ** You are attempting to run the Paper FAWE jar on a Spigot server.
+                                ** Either switch to Paper (https://papermc.io), or download the correct FAWE jar for your platform
+                                ** from Modrinth: https://modrinth.com/plugin/fastasyncworldedit/
+                                **********************************************"""
                 );
             }
         }
@@ -259,11 +242,10 @@ public class WorldEditPlugin extends JavaPlugin {
         // Now we can register events
         getServer().getPluginManager().registerEvents(new WorldEditListener(this), this);
         // register async tab complete, if available
-        if (PaperLib.isPaper()) {
+        if (PaperSupport.isPaper()) {
             getServer().getPluginManager().registerEvents(new AsyncTabCompleteListener(), this);
         }
 
-        initializeRegistries(); // this creates the objects matching Bukkit's enums - but doesn't fill them with data yet
         if (Bukkit.getWorlds().isEmpty()) {
             setupPreWorldData();
             // register this so we can load world-dependent data right as the first world is loading
@@ -295,6 +277,7 @@ public class WorldEditPlugin extends JavaPlugin {
 
     private void setupPreWorldData() {
         loadAdapter();
+        initializeRegistries(); // this creates the objects matching Bukkit's enums - but doesn't fill them with data yet
         WorldEdit.getInstance().loadMappings();
     }
 
@@ -356,9 +339,17 @@ public class WorldEditPlugin extends JavaPlugin {
                 EntityType.REGISTRY.register("minecraft:" + lowerCaseMcId, new EntityType("minecraft:" + lowerCaseMcId));
             }
         }
+
+        // Registries only available via NMS
+        BukkitImplAdapter adapter = getBukkitImplAdapter();
+        if (adapter != null) {
+            adapter.initializeRegistries();
+        }
+
         // ... :|
         GameModes.get("");
         WeatherTypes.get("");
+        Registries.get("");
     }
 
     private void setupTags() {
