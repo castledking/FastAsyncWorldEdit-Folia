@@ -97,18 +97,8 @@ import static net.minecraft.core.registries.Registries.BIOME;
 public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, LevelChunk> {
 
     private static final Logger LOGGER = LogManagerCompat.getLogger();
-    private static final boolean IS_FOLIA;
-
-    static {
-        boolean folia;
-        try {
-            Class.forName("io.papermc.paper.threadedregions.scheduler.RegionScheduler");
-            folia = true;
-        } catch (ClassNotFoundException e) {
-            folia = false;
-        }
-        IS_FOLIA = folia;
-    }
+    // Paper also ships the RegionScheduler API, so checking for that class wrongly reports Folia on Paper.
+    private static final boolean IS_FOLIA = com.fastasyncworldedit.core.util.FoliaSupport.isFolia();
 
     private static final Function<BlockPos, BlockVector3> posNms2We = v -> BlockVector3.at(v.getX(), v.getY(), v.getZ());
     public static final Function<BlockEntity, FaweCompoundTag> NMS_TO_TILE = ((PaperweightFaweAdapter) WorldEditPlugin
@@ -771,7 +761,9 @@ public class PaperweightGetBlocks extends AbstractBukkitGetBlocks<ServerLevel, L
                                 .putInt("x", x).putInt("y", y).putInt("z", z)
                                 .build();
 
-                        if (!IS_FOLIA) {
+                        // Apply in place unless another region owns the chunk: scheduling onto our own thread
+                        // and then blocking on the result would wait out the full timeout for every tile entity.
+                        if (!IS_FOLIA || Bukkit.isOwnedByCurrentRegion(bukkitWorld, pos.getX() >> 4, pos.getZ() >> 4)) {
                             try {
                                 BlockEntity tileEntity = nmsChunk.getBlockEntity(pos);
                                 if (tileEntity == null || tileEntity.isRemoved()) {
